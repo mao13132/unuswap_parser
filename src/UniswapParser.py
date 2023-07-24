@@ -2,24 +2,24 @@ import time
 
 import json
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from save_result import SaveResult
+from src.filter_date import FilterDate
 from src.uniswap_post_parser import UniswapPostPars
 
 
 class UniswapParser:
-    def __init__(self, driver, filter_24_date, count_day_filter):
+    def __init__(self, driver, filter_count_day):
         self.driver = driver
         self.url = f'https://gov.uniswap.org/latest?order=activity'
         self.source_name = 'Uniswap'
         self.links_post = []
-        self.filter_24_date = filter_24_date
-        self.count_day_filter = count_day_filter
+        self.filter_count_day = filter_count_day
 
     def load_page(self, url):
         try:
@@ -35,34 +35,11 @@ class UniswapParser:
                 EC.presence_of_element_located((By.XPATH, "//*[contains(@class, 'sign-up-button')]")))
             return True
         except:
-            # print(f'Ошибка при загрузке стартовой страницы страницы')
             return False
-
-
-
-
-
-
-    def load_start_site(self):
-        pass
-        # start_page = self.load_page(self.url)
-        #
-        # if not start_page:
-        #     return False
-        #
-        # check_page = self.__check_load_page()
-        #
-        # if not check_page:
-        #     return False
-        #
-        # print(f'Успешно зашёл на {self.source_name}')
-        #
-        # return True
 
     def loop_load_page(self):
         count = 0
         count_ower = 10
-
 
         while True:
 
@@ -87,11 +64,10 @@ class UniswapParser:
 
             return True
 
-
     def get_all_post(self):
         try:
             rows_post = self.driver.find_elements(by=By.XPATH,
-                                 value=f"//table[contains(@class, 'topic-list')]//tr")
+                                                  value=f"//table[contains(@class, 'topic-list')]//tr")
         except Exception as es:
             print(f'Ошибка при получение постов"{es}"')
             return False
@@ -100,35 +76,35 @@ class UniswapParser:
 
     def get_date(self, row):
         try:
-            date = row.find_element(by=By.XPATH, value=f".//*[contains(@class, 'relative-date')]").text
+            date = row.find_element(by=By.XPATH, value=f".//*[contains(@class, 'relative-date')]") \
+                .get_attribute('data-time')
         except:
-            date = ''
+            date = 0
 
         return date
 
-    def filter_date(self, date_post):
-        if 'ч' in date_post or 'h' in date_post:
-            return True
-
-        if 'd' in date_post:
-            try:
-                coun_day = date_post.replace('d', '')
-                coun_day = int(coun_day)
-            except:
-                return True
-            if coun_day <= self.count_day_filter:
-                return True
-
-
-        if 'дн' in date_post:
-            try:
-                coun_day = int(date_post.split()[0])
-            except:
-                return True
-            if coun_day <= self.count_day_filter:
-                return True
-
-        return False
+    # def filter_date(self, date_post):
+    #     if 'ч' in date_post or 'h' in date_post or 'мин' in date_post or 'h' in date_post:
+    #         return True
+    #
+    #     if 'd' in date_post:
+    #         try:
+    #             coun_day = date_post.replace('d', '')
+    #             coun_day = int(coun_day)
+    #         except:
+    #             return True
+    #         if coun_day <= self.count_day_filter:
+    #             return True
+    #
+    #     if 'дн' in date_post:
+    #         try:
+    #             coun_day = int(date_post.split()[0])
+    #         except:
+    #             return True
+    #         if coun_day <= self.count_day_filter:
+    #             return True
+    #
+    #     return False
 
     def get_name_post(self, row):
         try:
@@ -168,9 +144,9 @@ class UniswapParser:
 
             date_post = self.get_date(row)
 
-            date_result = self.filter_date(date_post)
+            date_post = FilterDate.unix_time(date_post, self.filter_count_day)
 
-            if not date_result:
+            if not date_post:
                 continue
 
             name_post = self.get_name_post(row)
@@ -188,11 +164,34 @@ class UniswapParser:
 
             self.links_post.append(good_itter)
 
+    def load_more_page(self, count):
+        for x in range(count):
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(1)
 
+        return True
+
+    def loop_get_all_post(self):
+
+        while True:
+
+            rows_post = self.get_all_post()
+
+            if rows_post == []:
+                return []
+
+            date_post = self.get_date(rows_post[-1])
+
+            date_post = FilterDate.unix_time(date_post, self.filter_count_day)
+
+            if not date_post:
+                return rows_post
+
+            self.load_more_page(1)
 
     def step_one_parse(self):
 
-        rows_post = self.get_all_post()
+        rows_post = self.loop_get_all_post()
 
         if not rows_post:
             return False
@@ -202,7 +201,6 @@ class UniswapParser:
         print(f'Обнаружил {len(self.links_post)} постов')
 
         return True
-
 
     def save_to_json(self, filename):
 
@@ -224,9 +222,6 @@ class UniswapParser:
 
         response_one_step = self.step_one_parse()
 
-        # from .temp import temp_list as links_post
-
-        # good_pars_row = UniswapPostPars(self.driver, links_post).start_pars()
         good_pars_row = UniswapPostPars(self.driver, self.links_post).start_pars()
 
         file_name = f'{datetime.now().strftime("%H_%M_%S")}'
@@ -235,7 +230,4 @@ class UniswapParser:
 
         file_name_json = self.save_to_json(file_name)
 
-        return True
-
-
-
+        return file_name

@@ -34,8 +34,8 @@ class CreatBrowser:
         options.add_argument("--headless")
         options.add_argument("window-size=1920,939")
 
-        path_dir = (f'browser\\profile\\uniswap')
-        options.add_argument(f"user-data-dir={path_dir}")
+        # path_dir = (f'browser\\profile\\uniswap')
+        # options.add_argument(f"user-data-dir={path_dir}")
 
         options.add_argument('--disable-dev-shm-usage')
 
@@ -57,10 +57,13 @@ class CreatBrowser:
 
         options.add_argument("--dns-prefetch-disable")
         options.add_argument("--disable-gpu")
+        options.add_argument("--log-level=3")
 
 
 
-        s = Service(executable_path=r"/usr/local/bin/chromedriver")
+        s = Service(executable_path=r"browser\chromedriver.exe")
+
+
 
         self.driver = webdriver.Chrome(service=s, options=options)
 

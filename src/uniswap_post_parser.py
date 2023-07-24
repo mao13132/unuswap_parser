@@ -15,7 +15,6 @@ class UniswapPostPars:
     def load_page(self, url):
         try:
 
-
             self.driver.get(url)
             return True
         except Exception as es:
@@ -108,22 +107,64 @@ class UniswapPostPars:
 
         return like
 
+    def get_comment(self, count):
+
+        good_list = []
+
+        for count_it in range(count):
+
+            try:
+                rows_comm = self.driver.find_elements(by=By.XPATH, value=f"//*[contains(@class, 'topic-post')]")
+            except:
+                return good_list
+
+            if rows_comm == []:
+                return good_list
+
+            try:
+                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            except:
+                return good_list
+
+            time.sleep(2)
+
+            if good_list == []:
+                good_list.extend(rows_comm)
+                continue
+
+            old_id = [elem.id for elem in good_list]
+
+            for row in rows_comm:
+                if not row.id in old_id:
+                    good_list.append(row)
+
+        return good_list
 
     def get_row_comments(self):
         try:
-            rows_comm = self.driver.find_elements(by=By.XPATH, value=f"//*[(contains(@class, 'topic-post')) and (not(contains(@class, 'owner')))]")
+
+            rows_comm = self.driver.find_elements(by=By.XPATH, value=f"//*[contains(@class, 'topic-post')]")
+
+
         except Exception as es:
             print(f'Не могу получить комментарии "{es}"')
             return []
 
-        return rows_comm
+        if len(rows_comm) == 1:
+            return []
+
+        return rows_comm[1:]
 
     def get_author_comment(self, comm):
         try:
             author_comment = comm.find_element(by=By.XPATH, value=f".//*[contains(@class, 'names')]").text
 
         except:
-            author_comment = ''
+            try:
+                author_comment = comm.text.split('\n')[0]
+
+            except:
+                author_comment = ''
 
         return author_comment
 
@@ -150,13 +191,18 @@ class UniswapPostPars:
             likes_comment = comm.find_element(by=By.XPATH, value=f".//*[contains(@class, 'like')]").text
 
         except:
-            likes_comment = ''
+            return 0
+
+        if likes_comment == '':
+            return 0
 
         return likes_comment
 
     def itter_rows_comm(self, rows_comm, post):
 
         comments_list = []
+
+        # print(f'Начинаю обработку {len(rows_comm)}')
 
         for comm in rows_comm:
             comment_dict = {}
@@ -178,17 +224,64 @@ class UniswapPostPars:
 
             comments_list.append(comment_dict)
 
-
-        post['comments'] = comments_list
+        post['comments'].extend(comments_list)
 
         return True
 
+    def try_element_itter(self, old_list):
+        good_list = []
+
+        for elem in old_list:
+
+            try:
+                good_list.append(elem.id)
+            except:
+                continue
+
+        return good_list
 
     def job_comments(self, post):
-        rows_comm = self.get_row_comments()
+        old_elem = []
+        post['comments'] = []
 
-        response_itter = self.itter_rows_comm(rows_comm, post)
+        # rows_comm = self.get_comment(5)
+        _count_try = 3
 
+        for cont_tru in range(_count_try):
+
+            # temp_list = []
+
+            rows_comm = self.get_row_comments()
+
+            if rows_comm == []:
+                return old_elem
+
+            if old_elem == []:
+                old_elem.extend(rows_comm)
+                temp_list = rows_comm
+            else:
+                temp_list = []
+
+                old_id = self.try_element_itter(old_elem)
+
+                for row in rows_comm:
+                    if not row.id in old_id:
+                        temp_list.append(row)
+                        old_elem.append(row)
+
+            if temp_list == []:
+                return True
+
+            response_itter = self.itter_rows_comm(temp_list, post)
+
+            try:
+                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            except:
+                continue
+
+            time.sleep(2)
+
+        print(f'Собрал {len(post["comments"])} комментариев')
 
     def start_pars(self):
         for count, post in enumerate(self.links_post):
@@ -212,6 +305,4 @@ class UniswapPostPars:
 
             list_comments = self.job_comments(post)
 
-
         return self.links_post
-
